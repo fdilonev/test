@@ -1,3 +1,3 @@
-# Othryn Platform
+# Jira Demo Test
 
-Backend services and authentication modules for the Othryn platform.
+Backend services and authentication modules.
