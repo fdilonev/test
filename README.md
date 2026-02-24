@@ -1,3 +1,3 @@
-# test
+# Othryn Platform
 
-Super Test
+Backend services and authentication modules for the Othryn platform.
