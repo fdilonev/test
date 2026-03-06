@@ -1,0 +1,46 @@
+name: Direct Push Alert
+
+on:
+  push:
+    branches: [main, development]
+
+jobs:
+  check-direct-push:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+
+    steps:
+      - name: Detect direct push
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const branch = context.ref.replace('refs/heads/', '');
+            const pusher = context.payload.pusher.name;
+            const commitMsg = context.payload.head_commit?.message || '';
+
+            // Skip PR merges and branch merges
+            if (commitMsg.startsWith('Merge pull request')) return;
+            if (commitMsg.startsWith('Merge branch')) return;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `⚠️ Direct push to ${branch} by ${pusher}`,
+              body: [
+                '## Direct Push Detected',
+                '',
+                '| Field | Value |',
+                '|-------|-------|',
+                `| **Branch** | \`${branch}\` |`,
+                `| **Pushed by** | @${pusher} |`,
+                `| **Commit** | \`${context.sha.substring(0, 7)}\` |`,
+                `| **Message** | ${commitMsg} |`,
+                '',
+                `> All changes to \`${branch}\` should go through a Pull Request.`,
+                '',
+                `cc @${pusher}`
+              ].join('\n'),
+              labels: ['direct-push']
+            });

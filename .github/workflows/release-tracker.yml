@@ -1,0 +1,111 @@
+name: Release Tracker
+
+on:
+  pull_request:
+    branches: [development]
+    types: [closed]
+
+jobs:
+  track-release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Extract Jira key from branch
+        id: jira-key
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branch = context.payload.pull_request.head.ref;
+            const match = branch.match(/AR-\d+/);
+            if (match) {
+              core.setOutput('key', match[0]);
+              console.log(`Found Jira key: ${match[0]}`);
+            } else {
+              core.setOutput('key', '');
+              console.log('No Jira key found in branch name');
+            }
+
+      - name: Find and tag Jira release
+        if: steps.jira-key.outputs.key != ''
+        env:
+          JIRA_AUTH: ${{ secrets.JIRA_AUTH }}
+          RELEASE_NAME: ${{ vars.JIRA_RELEASE_NAME }}
+          JIRA_KEY: ${{ steps.jira-key.outputs.key }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            if (!process.env.RELEASE_NAME) {
+              console.log('No JIRA_RELEASE_NAME variable set');
+              return;
+            }
+
+            const auth = process.env.JIRA_AUTH;
+            const headers = {
+              Authorization: `Basic ${auth}`,
+              Accept: 'application/json',
+              'Content-Type': 'application/json'
+            };
+
+            const versionsRes = await fetch(
+              'https://arduron.atlassian.net/rest/api/3/project/AR/versions',
+              { headers }
+            );
+            const versions = await versionsRes.json();
+            const target = versions.find(
+              v => v.name === process.env.RELEASE_NAME
+            );
+
+            if (!target) {
+              core.setFailed(`Release "${process.env.RELEASE_NAME}" not found`);
+              return;
+            }
+
+            console.log(`Found release: ${target.name} (${target.id})`);
+
+            const updateRes = await fetch(
+              `https://arduron.atlassian.net/rest/api/3/issue/${process.env.JIRA_KEY}`,
+              {
+                method: 'PUT',
+                headers,
+                body: JSON.stringify({
+                  update: {
+                    fixVersions: [{ add: { id: target.id } }]
+                  }
+                })
+              }
+            );
+
+            if (updateRes.ok) {
+              console.log(`${process.env.JIRA_KEY} added to ${target.name}`);
+            } else {
+              const err = await updateRes.text();
+              core.setFailed(`Failed to update: ${err}`);
+              return;
+            }
+
+            const key = process.env.JIRA_KEY;
+            const releaseUrl = `https://arduron.atlassian.net/projects/AR/versions/${target.id}`;
+            const ticketUrl = `https://arduron.atlassian.net/browse/${key}`;
+
+            const body = [
+              `## Release Tracking`,
+              `| | |`,
+              `|---|---|`,
+              `| **Ticket** | [${key}](${ticketUrl}) |`,
+              `| **Release** | [${target.name}](${releaseUrl}) |`,
+              `| **Status** | ${target.released ? 'Released' : 'Planned'} |`,
+              `| **Release Date** | ${target.releaseDate || 'TBD'} |`,
+              '',
+              `> ${key} has been added to **${target.name}**`
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body
+            });

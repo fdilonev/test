@@ -1,0 +1,79 @@
+name: PR Preview Deploy
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, development]
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      deployments: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Surge
+        run: npm install -g surge
+
+      - name: Deploy preview
+        id: deploy
+        env:
+          SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }}
+        run: |
+          PR_NUM=${{ github.event.pull_request.number }}
+          SUBDOMAIN="arduron-pr-${PR_NUM}"
+          URL="https://${SUBDOMAIN}.surge.sh"
+          surge ./ ${SUBDOMAIN}.surge.sh --token $SURGE_TOKEN
+          echo "url=${URL}" >> $GITHUB_OUTPUT
+          echo "subdomain=${SUBDOMAIN}" >> $GITHUB_OUTPUT
+
+      - name: Create deployment
+        uses: chrnorm/deployment-action@v2
+        id: deployment
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          environment: "preview-pr-${{ github.event.pull_request.number }}"
+          description: "Preview PR #${{ github.event.pull_request.number }}"
+
+      - name: Update deployment status
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          state: success
+          deployment-id: ${{ steps.deployment.outputs.deployment_id }}
+          environment-url: ${{ steps.deploy.outputs.url }}
+
+      - name: Comment preview URL
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const url = '${{ steps.deploy.outputs.url }}';
+            const marker = '<!-- pr-preview -->';
+            const body = `${marker}\n🚀 **Preview desplegado:** ${url}`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+
+            const existing = comments.find(c => c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: `${body}\n\n_Actualizado: ${new Date().toISOString()}_`
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body
+              });
+            }
