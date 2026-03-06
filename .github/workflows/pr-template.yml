@@ -3,7 +3,7 @@ name: PR Template
 on:
   pull_request:
     types: [opened, reopened]
-    branches: [main, development]
+    branches: [main, staging, development]
 
 jobs:
   add-template:
@@ -28,12 +28,18 @@ jobs:
             console.log(`Branch: ${branchName}`);
 
             const baseBranch = context.payload.pull_request.base.ref;
-            if (baseBranch === 'main' && branchName !== 'development') {
+            const allowed = {
+              main: 'staging',
+              staging: 'development',
+              development: null
+            };
+            const requiredSource = allowed[baseBranch];
+            if (requiredSource && branchName !== requiredSource) {
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: prNumber,
-                body: '> **Warning**\n> This PR targets `main` but only the `development` branch should merge into `main`.\n> Please change the base branch to `development`.'
+                body: `> **Warning**\n> This PR targets \`${baseBranch}\` but only \`${requiredSource}\` can merge into \`${baseBranch}\`.\n> **Flow:** \`development\` → \`staging\` → \`main\`\n> Please change the base branch.`
               });
             }
 

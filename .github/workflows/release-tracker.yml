@@ -2,7 +2,7 @@ name: Release Tracker
 
 on:
   pull_request:
-    branches: [development]
+    branches: [development, staging]
     types: [closed]
 
 jobs:
