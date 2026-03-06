@@ -28,39 +28,32 @@ jobs:
               console.log('No Jira key found in branch name');
             }
 
-      - name: Find current planned Jira release
+      - name: Find release by repo variable
         if: steps.jira-key.outputs.key != ''
         id: release
         run: |
+          RELEASE_NAME="${{ vars.JIRA_RELEASE_NAME }}"
+          if [ -z "$RELEASE_NAME" ]; then
+            echo "No JIRA_RELEASE_NAME variable set"
+            echo "id=" >> "$GITHUB_OUTPUT"
+            echo "name=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           VERSIONS=$(curl -s -u "${{ secrets.JIRA_AUTH }}" \
             "https://arduron.atlassian.net/rest/api/3/project/AR/versions")
 
           RELEASE_ID=$(echo "$VERSIONS" | python3 -c "
           import json, sys
-          from datetime import date
+          target = '$RELEASE_NAME'
           versions = json.load(sys.stdin)
-          unreleased = [v for v in versions if not v.get('released', False)]
-          if not unreleased:
-              print('')
-              sys.exit(0)
-          unreleased.sort(key=lambda v: v.get('releaseDate', '9999-12-31'))
-          print(unreleased[0]['id'])
-          ")
-
-          RELEASE_NAME=$(echo "$VERSIONS" | python3 -c "
-          import json, sys
-          versions = json.load(sys.stdin)
-          unreleased = [v for v in versions if not v.get('released', False)]
-          if not unreleased:
-              print('')
-              sys.exit(0)
-          unreleased.sort(key=lambda v: v.get('releaseDate', '9999-12-31'))
-          print(unreleased[0]['name'])
+          match = [v for v in versions if v['name'] == target]
+          print(match[0]['id'] if match else '')
           ")
 
           echo "id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
           echo "name=$RELEASE_NAME" >> "$GITHUB_OUTPUT"
-          echo "Found release: $RELEASE_NAME ($RELEASE_ID)"
+          echo "Matched release: $RELEASE_NAME ($RELEASE_ID)"
 
       - name: Add ticket to Jira release
         if: steps.jira-key.outputs.key != '' && steps.release.outputs.id != ''
