@@ -2,7 +2,7 @@ name: Direct Push Alert
 
 on:
   push:
-    branches: [main, development]
+    branches: [main, staging, development]
 
 jobs:
   check-direct-push:

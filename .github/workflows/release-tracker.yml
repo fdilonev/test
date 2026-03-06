@@ -2,7 +2,7 @@ name: Release Tracker
 
 on:
   pull_request:
-    branches: [development]
+    branches: [development, staging]
     types: [closed]
 
 jobs:
@@ -86,6 +86,17 @@ jobs:
               core.setFailed(`Failed to update: ${err}`);
               return;
             }
+
+            // Transition ticket to Done (id: 111)
+            await fetch(
+              `https://arduron.atlassian.net/rest/api/3/issue/${process.env.JIRA_KEY}/transitions`,
+              {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ transition: { id: '111' } })
+              }
+            );
+            console.log(`${process.env.JIRA_KEY} transitioned to Done`);
 
             const key = process.env.JIRA_KEY;
             const releaseUrl = `https://arduron.atlassian.net/projects/AR/versions/${target.id}`;
