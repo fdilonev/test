@@ -28,60 +28,67 @@ jobs:
               console.log('No Jira key found in branch name');
             }
 
-      - name: Find release by repo variable
+      - name: Find and tag Jira release
         if: steps.jira-key.outputs.key != ''
-        id: release
-        run: |
-          RELEASE_NAME="${{ vars.JIRA_RELEASE_NAME }}"
-          if [ -z "$RELEASE_NAME" ]; then
-            echo "No JIRA_RELEASE_NAME variable set"
-            echo "id=" >> "$GITHUB_OUTPUT"
-            echo "name=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          VERSIONS=$(curl -s -u "${{ secrets.JIRA_AUTH }}" \
-            "https://arduron.atlassian.net/rest/api/3/project/AR/versions")
-
-          RELEASE_ID=$(echo "$VERSIONS" | python3 -c "
-          import json, sys
-          target = '$RELEASE_NAME'
-          versions = json.load(sys.stdin)
-          match = [v for v in versions if v['name'] == target]
-          print(match[0]['id'] if match else '')
-          ")
-
-          echo "id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
-          echo "name=$RELEASE_NAME" >> "$GITHUB_OUTPUT"
-          echo "Matched release: $RELEASE_NAME ($RELEASE_ID)"
-
-      - name: Add ticket to Jira release
-        if: steps.jira-key.outputs.key != '' && steps.release.outputs.id != ''
-        run: |
-          KEY="${{ steps.jira-key.outputs.key }}"
-          VERSION_ID="${{ steps.release.outputs.id }}"
-          VERSION_NAME="${{ steps.release.outputs.name }}"
-
-          echo "Adding $KEY to release $VERSION_NAME"
-
-          curl -s -X PUT \
-            -u "${{ secrets.JIRA_AUTH }}" \
-            -H "Content-Type: application/json" \
-            -d "{\"update\":{\"fixVersions\":[{\"add\":{\"id\":\"$VERSION_ID\"}}]}}" \
-            "https://arduron.atlassian.net/rest/api/3/issue/$KEY"
-
-          echo "Done — $KEY added to $VERSION_NAME"
-
-      - name: Comment on PR
-        if: steps.jira-key.outputs.key != '' && steps.release.outputs.name != ''
+        env:
+          JIRA_AUTH: ${{ secrets.JIRA_AUTH }}
+          RELEASE_NAME: ${{ vars.JIRA_RELEASE_NAME }}
+          JIRA_KEY: ${{ steps.jira-key.outputs.key }}
         uses: actions/github-script@v7
         with:
           script: |
-            const key = '${{ steps.jira-key.outputs.key }}';
-            const release = '${{ steps.release.outputs.name }}';
+            if (!process.env.RELEASE_NAME) {
+              console.log('No JIRA_RELEASE_NAME variable set');
+              return;
+            }
+
+            const auth = process.env.JIRA_AUTH;
+            const headers = {
+              Authorization: `Basic ${auth}`,
+              Accept: 'application/json',
+              'Content-Type': 'application/json'
+            };
+
+            const versionsRes = await fetch(
+              'https://arduron.atlassian.net/rest/api/3/project/AR/versions',
+              { headers }
+            );
+            const versions = await versionsRes.json();
+            const target = versions.find(
+              v => v.name === process.env.RELEASE_NAME
+            );
+
+            if (!target) {
+              core.setFailed(`Release "${process.env.RELEASE_NAME}" not found`);
+              return;
+            }
+
+            console.log(`Found release: ${target.name} (${target.id})`);
+
+            const updateRes = await fetch(
+              `https://arduron.atlassian.net/rest/api/3/issue/${process.env.JIRA_KEY}`,
+              {
+                method: 'PUT',
+                headers,
+                body: JSON.stringify({
+                  update: {
+                    fixVersions: [{ add: { id: target.id } }]
+                  }
+                })
+              }
+            );
+
+            if (updateRes.ok) {
+              console.log(`${process.env.JIRA_KEY} added to ${target.name}`);
+            } else {
+              const err = await updateRes.text();
+              core.setFailed(`Failed to update: ${err}`);
+              return;
+            }
+
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.payload.pull_request.number,
-              body: `📦 **${key}** added to Jira release **${release}**`
+              body: `📦 **${process.env.JIRA_KEY}** added to Jira release **${target.name}**`
             });
