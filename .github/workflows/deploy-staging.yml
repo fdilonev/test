@@ -1,0 +1,70 @@
+name: Deploy Staging
+
+on:
+  push:
+    branches: [staging]
+
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    permissions:
+      deployments: write
+      contents: read
+    environment:
+      name: staging
+      url: https://arduron-staging.surge.sh
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract Jira keys
+        id: jira
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const commits = context.payload.commits || [];
+            const keys = new Set();
+            for (const c of commits) {
+              const m = c.message.match(/AR-\d+/g) || [];
+              m.forEach(k => keys.add(k));
+            }
+            const jiraKeys = [...keys].join(',') || 'no-ticket';
+            core.setOutput('keys', jiraKeys);
+
+      - name: Create Deployment
+        uses: chrnorm/deployment-action@v2
+        id: deployment
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          environment: staging
+          description: "Staging deploy ${{ steps.jira.outputs.keys }}"
+
+      - name: Deploy to Surge (staging)
+        run: npx surge . arduron-staging.surge.sh --token ${{ secrets.SURGE_TOKEN }}
+
+      - name: Run staging checks
+        run: |
+          echo "Running staging validations..."
+          test -f index.html && echo "index.html OK"
+          test -d css && echo "CSS directory OK"
+          test -d js && echo "JS directory OK"
+          echo "Staging deploy complete"
+
+      - name: Update status (success)
+        if: success()
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          state: success
+          deployment-id: ${{ steps.deployment.outputs.deployment_id }}
+          environment-url: https://arduron-staging.surge.sh
+
+      - name: Update status (failure)
+        if: failure()
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          state: failure
+          deployment-id: ${{ steps.deployment.outputs.deployment_id }}
