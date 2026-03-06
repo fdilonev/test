@@ -54,8 +54,19 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-      - name: Log production deploy
-        run: |
-          echo "🚀 Production deploy complete"
-          echo "Jira tickets: ${{ steps.jira.outputs.keys }}"
-          echo "URL: https://fdilonev.github.io/test/"
+      - name: Track deployment for Jira
+        uses: chrnorm/deployment-action@v2
+        id: jira-deploy
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          environment: production
+          description: "Production deploy ${{ steps.jira.outputs.keys }}"
+
+      - name: Update Jira deployment status
+        if: success()
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          state: success
+          deployment-id: ${{ steps.jira-deploy.outputs.deployment_id }}
+          environment-url: https://fdilonev.github.io/test/
