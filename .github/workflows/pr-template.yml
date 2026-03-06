@@ -2,8 +2,8 @@ name: PR Template
 
 on:
   pull_request:
-    types: [opened]
-    branches: [main]
+    types: [opened, reopened]
+    branches: [main, development]
 
 jobs:
   add-template:
@@ -14,6 +14,8 @@ jobs:
     steps:
       - name: Add template and Jira link to PR
         uses: actions/github-script@v7
+        env:
+          JIRA_AUTH: ${{ secrets.JIRA_AUTH }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -24,24 +26,84 @@ jobs:
 
             console.log(`Branch: ${branchName}`);
 
+            const baseBranch = context.payload.pull_request.base.ref;
+            if (baseBranch === 'main' && branchName !== 'development') {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: '> **Warning**\n> This PR targets `main` but only the `development` branch should merge into `main`.\n> Please change the base branch to `development`.'
+              });
+            }
+
             if (currentBody.includes('## Issue')) {
               console.log('Template already present, skipping');
               return;
             }
 
-            const match = branchName.match(/((?:SP|AR)-\d+)/);
-            let jiraLine = '';
+            const capitalize = s => s.replace(/\b\w/g, c => c.toUpperCase());
+            const keyMatch = branchName.match(/^(AR-\d+)-(.*)/);
+            let prTitle = capitalize(branchName.replace(/-/g, ' '));
+            if (keyMatch) {
+              const rest = keyMatch[2];
+              const suffix = rest.match(/-(\d+)$/);
+              const body = (suffix ? rest.slice(0, -suffix[0].length) : rest).replace(/-/g, ' ');
+              const capitalized = capitalize(body);
+              prTitle = suffix ? `${keyMatch[1]} ${capitalized}-${suffix[1]}` : `${keyMatch[1]} ${capitalized}`;
+            }
+
+            const match = branchName.match(/(AR-\d+)/);
+            let jiraSection = '';
             if (match) {
               const jiraKey = match[1];
               const jiraUrl = `https://arduron.atlassian.net/browse/${jiraKey}`;
-              jiraLine = `<a href="${jiraUrl}" target="_blank">${jiraKey}</a>`;
-              console.log(`Found Jira ticket: ${jiraKey}`);
+
+              let ticketTitle = '';
+              const jiraAuth = process.env.JIRA_AUTH;
+              if (jiraAuth) {
+                try {
+                  const res = await fetch(
+                    `https://arduron.atlassian.net/rest/api/3/issue/${jiraKey}?fields=summary`,
+                    { headers: { Authorization: `Basic ${jiraAuth}`, Accept: 'application/json' } }
+                  );
+                  if (res.ok) {
+                    const data = await res.json();
+                    ticketTitle = data.fields.summary;
+                  }
+
+                  const ghUser = await github.rest.users.getByUsername({ username: author });
+                  const email = ghUser.data.email;
+                  if (email) {
+                    const users = await fetch(
+                      `https://arduron.atlassian.net/rest/api/3/user/search?query=${email}`,
+                      { headers: { Authorization: `Basic ${jiraAuth}`, Accept: 'application/json' } }
+                    );
+                    if (users.ok) {
+                      const found = await users.json();
+                      if (found.length > 0) {
+                        await fetch(
+                          `https://arduron.atlassian.net/rest/api/3/issue/${jiraKey}/assignee`,
+                          {
+                            method: 'PUT',
+                            headers: { Authorization: `Basic ${jiraAuth}`, 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ accountId: found[0].accountId })
+                          }
+                        );
+                      }
+                    }
+                  }
+                } catch (e) {
+                  console.log(`Jira API error: ${e.message}`);
+                }
+              }
+
+              jiraSection = ticketTitle
+                ? `[${jiraKey} - ${ticketTitle}](${jiraUrl})`
+                : `[${jiraKey}](${jiraUrl})`;
             }
 
-            const issueLine = jiraLine ? `## Issue ${jiraLine}` : '## Issue';
-
             const newBody = [
-              issueLine,
+              jiraSection,
               '',
               '## What was done',
               currentBody,
@@ -62,6 +124,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               pull_number: prNumber,
+              title: prTitle,
               body: newBody
             });
 
