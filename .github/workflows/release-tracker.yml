@@ -14,6 +14,10 @@ jobs:
       pull-requests: write
 
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Extract Jira key from branch
         id: jira-key
         uses: actions/github-script@v7
@@ -23,51 +27,108 @@ jobs:
             const match = branch.match(/AR-\d+/);
             if (match) {
               core.setOutput('key', match[0]);
-              console.log(`Found Jira key: ${match[0]}`);
             } else {
               core.setOutput('key', '');
-              console.log('No Jira key found in branch name');
             }
 
-      - name: Find and tag Jira release
+      - name: Find or create Jira release and tag ticket
         if: steps.jira-key.outputs.key != ''
         env:
           JIRA_AUTH: ${{ secrets.JIRA_AUTH }}
           RELEASE_NAME: ${{ vars.JIRA_RELEASE_NAME }}
           JIRA_KEY: ${{ steps.jira-key.outputs.key }}
+          JIRA_PROJECT_ID: "10168"
+          REPO_NAME: ${{ github.event.repository.name }}
         uses: actions/github-script@v7
         with:
           script: |
-            if (!process.env.RELEASE_NAME) {
-              console.log('No JIRA_RELEASE_NAME variable set');
-              return;
-            }
-
             const auth = process.env.JIRA_AUTH;
+            const key = process.env.JIRA_KEY;
             const headers = {
               Authorization: `Basic ${auth}`,
               Accept: 'application/json',
               'Content-Type': 'application/json'
             };
 
-            const versionsRes = await fetch(
+            // Fetch all versions
+            const vRes = await fetch(
               'https://arduron.atlassian.net/rest/api/3/project/AR/versions',
               { headers }
             );
-            const versions = await versionsRes.json();
-            const target = versions.find(
-              v => v.name === process.env.RELEASE_NAME
-            );
+            const versions = await vRes.json();
 
+            // Try to find release by JIRA_RELEASE_NAME variable
+            let releaseName = process.env.RELEASE_NAME || '';
+            let target = releaseName
+              ? versions.find(v => v.name === releaseName)
+              : null;
+
+            // If no variable set or release not found, auto-generate
             if (!target) {
-              core.setFailed(`Release "${process.env.RELEASE_NAME}" not found`);
-              return;
+              // Find latest release for this repo
+              const repoPrefix = process.env.REPO_NAME;
+              const repoVersions = versions
+                .filter(v => v.name.toLowerCase().includes(repoPrefix.toLowerCase()))
+                .sort((a, b) => (b.releaseDate || '').localeCompare(a.releaseDate || ''));
+
+              // Calculate next version number
+              let nextVersion = 'v1.0.0';
+              if (repoVersions.length > 0) {
+                const last = repoVersions[0].name;
+                const vMatch = last.match(/v?(\d+)\.(\d+)\.(\d+)/);
+                if (vMatch) {
+                  const [, major, minor, patch] = vMatch.map(Number);
+                  nextVersion = `v${major}.${minor + 1}.0`;
+                }
+              }
+
+              releaseName = `${repoPrefix} ${nextVersion}`;
+
+              // Check if it already exists
+              target = versions.find(v => v.name === releaseName);
+
+              if (!target) {
+                // Create the release in Jira
+                const today = new Date().toISOString().split('T')[0];
+                const futureDate = new Date();
+                futureDate.setDate(futureDate.getDate() + 14);
+                const releaseDate = futureDate.toISOString().split('T')[0];
+
+                console.log(`Creating Jira release: ${releaseName}`);
+                const createRes = await fetch(
+                  'https://arduron.atlassian.net/rest/api/3/version',
+                  {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({
+                      name: releaseName,
+                      description: `Auto-generated from ${process.env.REPO_NAME} repo`,
+                      projectId: process.env.JIRA_PROJECT_ID,
+                      startDate: today,
+                      releaseDate: releaseDate,
+                      released: false
+                    })
+                  }
+                );
+                target = await createRes.json();
+                console.log(`Created: ${target.name} (id: ${target.id})`);
+
+                // Update repo variable for future PRs
+                await github.rest.actions.createOrUpdateRepoVariable({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: 'JIRA_RELEASE_NAME',
+                  value: releaseName
+                });
+                console.log(`Updated JIRA_RELEASE_NAME → ${releaseName}`);
+              }
             }
 
-            console.log(`Found release: ${target.name} (${target.id})`);
+            console.log(`Using release: ${target.name} (${target.id})`);
 
+            // Add ticket to release
             const updateRes = await fetch(
-              `https://arduron.atlassian.net/rest/api/3/issue/${process.env.JIRA_KEY}`,
+              `https://arduron.atlassian.net/rest/api/3/issue/${key}`,
               {
                 method: 'PUT',
                 headers,
@@ -79,26 +140,25 @@ jobs:
               }
             );
 
-            if (updateRes.ok) {
-              console.log(`${process.env.JIRA_KEY} added to ${target.name}`);
-            } else {
+            if (!updateRes.ok) {
               const err = await updateRes.text();
-              core.setFailed(`Failed to update: ${err}`);
+              core.setFailed(`Failed to tag ${key}: ${err}`);
               return;
             }
+            console.log(`${key} added to ${target.name}`);
 
             // Transition ticket to Done (id: 111)
             await fetch(
-              `https://arduron.atlassian.net/rest/api/3/issue/${process.env.JIRA_KEY}/transitions`,
+              `https://arduron.atlassian.net/rest/api/3/issue/${key}/transitions`,
               {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({ transition: { id: '111' } })
               }
             );
-            console.log(`${process.env.JIRA_KEY} transitioned to Done`);
+            console.log(`${key} transitioned to Done`);
 
-            const key = process.env.JIRA_KEY;
+            // Comment on PR
             const releaseUrl = `https://arduron.atlassian.net/projects/AR/versions/${target.id}`;
             const ticketUrl = `https://arduron.atlassian.net/browse/${key}`;
 

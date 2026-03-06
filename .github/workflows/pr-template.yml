@@ -108,7 +108,7 @@ jobs:
                 ? `[${jiraKey} - ${ticketTitle}](${jiraUrl})`
                 : `[${jiraKey}](${jiraUrl})`;
 
-              if (jiraAuth && process.env.JIRA_RELEASE_NAME) {
+              if (jiraAuth) {
                 try {
                   const vRes = await fetch(
                     'https://arduron.atlassian.net/rest/api/3/project/AR/versions',
@@ -116,7 +116,16 @@ jobs:
                   );
                   if (vRes.ok) {
                     const versions = await vRes.json();
-                    const rel = versions.find(v => v.name === process.env.JIRA_RELEASE_NAME);
+                    const repoName = context.repo.repo;
+                    // Try variable first, then find by repo name
+                    let rel = process.env.JIRA_RELEASE_NAME
+                      ? versions.find(v => v.name === process.env.JIRA_RELEASE_NAME)
+                      : null;
+                    if (!rel) {
+                      rel = versions
+                        .filter(v => !v.released && v.name.toLowerCase().includes(repoName.toLowerCase()))
+                        .sort((a, b) => (a.releaseDate || '9999').localeCompare(b.releaseDate || '9999'))[0];
+                    }
                     if (rel) {
                       const relUrl = `https://arduron.atlassian.net/projects/AR/versions/${rel.id}`;
                       jiraSection += `\n**Release:** [${rel.name}](${relUrl}) — ${rel.releaseDate || 'TBD'}`;
