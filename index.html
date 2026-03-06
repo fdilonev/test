@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Arduron Times</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=UnifrakturMaguntia&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/newspaper.css">
+  <link rel="stylesheet" href="css/sections.css">
+</head>
+<body>
+  <div class="page">
+    <header class="masthead">
+      <div class="masthead-top">
+        <span class="edition">Edición No. 001</span>
+        <span class="weather">Nublado, 18°C</span>
+      </div>
+      <div class="masthead-rule double"></div>
+      <h1 class="masthead-title">The Arduron Times</h1>
+      <p class="masthead-subtitle">El Diario de la Automatización y el Despliegue Continuo</p>
+      <div class="masthead-rule double"></div>
+      <div class="masthead-meta">
+        <span class="date" id="date"></span>
+        <span class="price">Precio: Gratis · Open Source</span>
+      </div>
+      <div class="masthead-rule thin"></div>
+    </header>
+
+    <main>
+      <article class="headline">
+        <h2>El Poder de GitHub Actions<br>y el Despliegue Automatizado</h2>
+        <p class="byline">Por la Redacción de Arduron · Investigación Especial</p>
+        <p class="lead"><span class="drop-cap">L</span>a revolución silenciosa del desarrollo de software ya está aquí. Las organizaciones que adoptan pipelines de integración y despliegue continuo reportan una reducción del 73% en errores de producción y ciclos de entrega hasta 10 veces más rápidos.</p>
+      </article>
+
+      <div class="masthead-rule ornament"></div>
+
+      <div class="columns-3">
+        <article class="column-article">
+          <h3>Integración Continua: El Futuro Ya Llegó</h3>
+          <p class="byline">Por M. DevOps</p>
+          <p>Cada commit desencadena una orquesta de validaciones automáticas. Linting, compilación, pruebas unitarias — todo ejecutado en segundos sin intervención humana. Los equipos que implementan CI detectan bugs 26 veces más rápido que los que dependen de revisiones manuales.</p>
+          <p>«Ya no esperamos al viernes para descubrir que algo se rompió», comenta un ingeniero senior.</p>
+        </article>
+
+        <article class="column-article">
+          <h3>Pruebas Automatizadas: La Garantía Silenciosa</h3>
+          <p class="byline">Por A. QualityFirst</p>
+          <p>Mientras los desarrolladores duermen, las suites de pruebas trabajan. End-to-end, integración, regresión — cada línea de código pasa por un riguroso tribunal automatizado antes de llegar a producción.</p>
+          <p>Los resultados hablan: las empresas con cobertura superior al 80% reportan un 40% menos de incidentes críticos.</p>
+        </article>
+
+        <article class="column-article">
+          <h3>Del Código a Producción en Minutos</h3>
+          <p class="byline">Por R. Pipeline</p>
+          <p>Los pipelines de despliegue modernos han eliminado la temida «noche de deploy». Con estrategias como blue-green y canary releases, las actualizaciones llegan a los usuarios de forma gradual y segura.</p>
+          <p>GitHub Actions permite definir estos flujos como código, versionados junto al proyecto.</p>
+        </article>
+      </div>
+
+      <div class="masthead-rule thin"></div>
+
+      <div class="columns-2">
+        <section class="deployments">
+          <h3 class="section-header">⚙ Últimos Despliegues</h3>
+          <div id="deployments" class="ticker"></div>
+        </section>
+
+        <section class="branch-health">
+          <h3 class="section-header">⚕ Salud de las Ramas</h3>
+          <div id="branch-health" class="ticker"></div>
+        </section>
+      </div>
+
+      <div class="masthead-rule ornament"></div>
+
+      <footer class="footer">
+        <p>© 2026 The Arduron Times · Generado automáticamente por GitHub Actions</p>
+        <p class="footer-note">Esta página se actualiza con cada despliegue. Última compilación: <span id="build-time"></span></p>
+      </footer>
+    </main>
+  </div>
+
+  <script src="js/newspaper.js"></script>
+</body>
+</html>
