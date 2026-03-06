@@ -1,4 +1,4 @@
-name: Deploy to GitHub Pages
+name: Deploy Production
 
 on:
   push:
@@ -9,20 +9,38 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  deployments: write
 
 concurrency:
   group: pages
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  deploy-prod:
     runs-on: ubuntu-latest
     environment:
-      name: github-pages
+      name: production
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract Jira keys
+        id: jira
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const commits = context.payload.commits || [];
+            const keys = new Set();
+            for (const c of commits) {
+              const m = c.message.match(/AR-\d+/g) || [];
+              m.forEach(k => keys.add(k));
+            }
+            const jiraKeys = [...keys].join(',') || 'no-ticket';
+            core.setOutput('keys', jiraKeys);
+            console.log(`Jira keys: ${jiraKeys}`);
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -35,3 +53,9 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Log production deploy
+        run: |
+          echo "🚀 Production deploy complete"
+          echo "Jira tickets: ${{ steps.jira.outputs.keys }}"
+          echo "URL: https://fdilonev.github.io/test/"
