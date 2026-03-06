@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="css/blog.css">
   <link rel="stylesheet" href="css/cards.css">
   <link rel="stylesheet" href="css/stats.css">
+  <link rel="stylesheet" href="css/newsletter.css">
 </head>
 <body>
   <nav class="nav">
@@ -45,6 +46,20 @@
       <p class="banner-sub">— Colombia, tierra de sabrosura</p>
     </section>
 
+    <section class="testimonials">
+      <h2 class="section-title" style="color:#fff">Lo Que Dicen Los Viajeros</h2>
+      <div class="testimonial-grid" id="testimonials"></div>
+    </section>
+
+    <section class="newsletter">
+      <h2 class="newsletter-title">Recibe Destinos en Tu Correo</h2>
+      <p class="newsletter-sub">Suscríbete y recibe cada semana un nuevo rincón de Colombia por descubrir.</p>
+      <form class="newsletter-form" onsubmit="event.preventDefault();this.innerHTML='<p style=color:#166534;font-weight:600>¡Gracias por suscribirte!</p>'">
+        <input type="email" placeholder="tu@correo.com" required class="newsletter-input">
+        <button type="submit" class="newsletter-btn">Suscribirse</button>
+      </form>
+    </section>
+
     <section class="section" id="sobre">
       <h2 class="section-title">Sobre Este Proyecto</h2>
       <p class="about-text">Este blog se despliega automáticamente con <strong>GitHub Actions</strong> y <strong>GitHub Pages</strong>. Cada push a <code>main</code> genera una nueva versión del sitio.</p>
@@ -58,5 +73,6 @@
 
   <script src="js/blog.js"></script>
   <script src="js/stats.js"></script>
+  <script src="js/testimonials.js"></script>
 </body>
 </html>
