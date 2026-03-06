@@ -1,0 +1,90 @@
+name: PR Jira Sub-task
+
+on:
+  pull_request:
+    types: [opened]
+    branches: [main, development]
+
+jobs:
+  create-subtask:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: Create Jira sub-task for PR
+        uses: actions/github-script@v7
+        env:
+          JIRA_AUTH: ${{ secrets.JIRA_AUTH }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const jiraAuth = process.env.JIRA_AUTH;
+            if (!jiraAuth) return;
+
+            const branchName = context.payload.pull_request.head.ref;
+            const prNumber = context.issue.number;
+            const prTitle = context.payload.pull_request.title;
+            const prUrl = context.payload.pull_request.html_url;
+            const author = context.payload.pull_request.user.login;
+
+            const match = branchName.match(/(AR-\d+)/);
+            if (!match) return;
+
+            const jiraKey = match[1];
+            const headers = {
+              Authorization: `Basic ${jiraAuth}`,
+              'Content-Type': 'application/json',
+              Accept: 'application/json'
+            };
+            const baseUrl = 'https://arduron.atlassian.net/rest/api/3';
+
+            // Get parent issue project key and id
+            const parentRes = await fetch(`${baseUrl}/issue/${jiraKey}?fields=project`, { headers });
+            if (!parentRes.ok) return;
+            const parent = await parentRes.json();
+            const projectKey = parent.fields.project.key;
+
+            // Create sub-task
+            const subtask = await fetch(`${baseUrl}/issue`, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({
+                fields: {
+                  project: { key: projectKey },
+                  parent: { key: jiraKey },
+                  summary: `PR #${prNumber} - Code Review`,
+                  issuetype: { name: 'Sub-task' },
+                  customfield_10038: 1,
+                  description: {
+                    type: 'doc',
+                    version: 1,
+                    content: [{
+                      type: 'paragraph',
+                      content: [
+                        { type: 'text', text: 'Pull Request: ' },
+                        { type: 'text', text: `#${prNumber} ${prTitle}`, marks: [{ type: 'link', attrs: { href: prUrl } }] },
+                        { type: 'text', text: ` by @${author}` }
+                      ]
+                    }]
+                  }
+                }
+              })
+            });
+
+            if (subtask.ok) {
+              const data = await subtask.json();
+              console.log(`Created sub-task ${data.key} for ${jiraKey}`);
+
+              // Add comment on PR linking to sub-task
+              const subtaskUrl = `https://arduron.atlassian.net/browse/${data.key}`;
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: `🎫 Jira sub-task created: [${data.key}](${subtaskUrl})`
+              });
+            } else {
+              const err = await subtask.text();
+              console.log(`Failed to create sub-task: ${err}`);
+            }
