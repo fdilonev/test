@@ -1,0 +1,68 @@
+.dark-toggle {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 200;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.2);
+  background: var(--text);
+  color: var(--bg);
+  font-size: 1.4rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .3s ease;
+  box-shadow: 0 4px 15px rgba(0,0,0,.2);
+}
+
+.dark-toggle:hover { transform: scale(1.1); }
+
+/* Dark theme overrides */
+body.dark {
+  --bg: #0f0f0f;
+  --text: #e8e4dc;
+  --text-soft: #a8a49c;
+  --accent: #f59e0b;
+  --accent-light: #422006;
+  --green: #065f46;
+}
+
+body.dark .nav {
+  background: rgba(15,15,15,.9);
+  border-bottom-color: rgba(255,255,255,.06);
+}
+
+body.dark .hero {
+  background: linear-gradient(135deg, #0a2818 0%, #134e3a 40%, #78350f 100%);
+}
+
+body.dark .card {
+  background: #1a1a1a;
+  box-shadow: 0 1px 3px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.2);
+}
+
+body.dark .card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,.4), 0 16px 40px rgba(0,0,0,.3);
+}
+
+body.dark .card-footer {
+  border-top-color: rgba(255,255,255,.06);
+}
+
+body.dark .banner { background: #042f2e; }
+
+body.dark .footer { border-top-color: rgba(255,255,255,.06); }
+
+body.dark .about-text code {
+  background: #422006;
+  color: #fbbf24;
+}
+
+body.dark .dark-toggle {
+  background: var(--bg);
+  color: var(--text);
+  border-color: rgba(255,255,255,.15);
+}
