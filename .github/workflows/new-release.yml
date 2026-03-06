@@ -1,0 +1,105 @@
+name: New Release Cycle
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version number (e.g. v1.0.3)"
+        required: true
+      release_name:
+        description: "Release name prefix (e.g. Deployment Demo)"
+        required: true
+        default: "Deployment Demo Jira Git"
+      release_date:
+        description: "Target release date (YYYY-MM-DD)"
+        required: false
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+
+    steps:
+      - name: Create release cycle
+        env:
+          JIRA_AUTH: ${{ secrets.JIRA_AUTH }}
+          VERSION: ${{ inputs.version }}
+          PREFIX: ${{ inputs.release_name }}
+          TARGET_DATE: ${{ inputs.release_date }}
+          JIRA_PROJECT_ID: "10168"
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = process.env.VERSION;
+            const prefix = process.env.PREFIX;
+            const releaseName = `${prefix} ${version}`;
+            const auth = process.env.JIRA_AUTH;
+            const today = new Date().toISOString().split('T')[0];
+            const targetDate = process.env.TARGET_DATE || (() => {
+              const d = new Date();
+              d.setDate(d.getDate() + 14);
+              return d.toISOString().split('T')[0];
+            })();
+
+            const headers = {
+              Authorization: `Basic ${auth}`,
+              Accept: 'application/json',
+              'Content-Type': 'application/json'
+            };
+
+            // 1. Check if release already exists
+            const vRes = await fetch(
+              'https://arduron.atlassian.net/rest/api/3/project/AR/versions',
+              { headers }
+            );
+            const versions = await vRes.json();
+            const existing = versions.find(v => v.name === releaseName);
+
+            if (existing) {
+              core.setFailed(`Release "${releaseName}" already exists in Jira`);
+              return;
+            }
+
+            // 2. Create Jira release
+            const createRes = await fetch(
+              'https://arduron.atlassian.net/rest/api/3/version',
+              {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                  name: releaseName,
+                  description: `Created from GitHub Actions`,
+                  projectId: process.env.JIRA_PROJECT_ID,
+                  startDate: today,
+                  releaseDate: targetDate,
+                  released: false
+                })
+              }
+            );
+            const jiraRelease = await createRes.json();
+            console.log(`Jira release created: ${jiraRelease.name} (${jiraRelease.id})`);
+
+            // 3. Update repo variable
+            await github.rest.actions.createOrUpdateRepoVariable({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'JIRA_RELEASE_NAME',
+              value: releaseName
+            });
+            console.log(`JIRA_RELEASE_NAME → ${releaseName}`);
+
+            // 4. Summary
+            const jiraUrl = `https://arduron.atlassian.net/projects/AR/versions/${jiraRelease.id}`;
+            core.summary
+              .addHeading('New Release Cycle Created')
+              .addTable([
+                [{data: 'Field', header: true}, {data: 'Value', header: true}],
+                ['Release', releaseName],
+                ['Jira', `<a href="${jiraUrl}">${jiraUrl}</a>`],
+                ['Start Date', today],
+                ['Target Date', targetDate]
+              ])
+              .addRaw('\nAll PRs merged to development will now be tagged to this release.')
+              .write();
