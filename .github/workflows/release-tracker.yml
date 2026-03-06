@@ -1,0 +1,94 @@
+name: Release Tracker
+
+on:
+  pull_request:
+    branches: [development]
+    types: [closed]
+
+jobs:
+  track-release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Extract Jira key from branch
+        id: jira-key
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branch = context.payload.pull_request.head.ref;
+            const match = branch.match(/AR-\d+/);
+            if (match) {
+              core.setOutput('key', match[0]);
+              console.log(`Found Jira key: ${match[0]}`);
+            } else {
+              core.setOutput('key', '');
+              console.log('No Jira key found in branch name');
+            }
+
+      - name: Find current planned Jira release
+        if: steps.jira-key.outputs.key != ''
+        id: release
+        run: |
+          VERSIONS=$(curl -s -u "${{ secrets.JIRA_AUTH }}" \
+            "https://arduron.atlassian.net/rest/api/3/project/AR/versions")
+
+          RELEASE_ID=$(echo "$VERSIONS" | python3 -c "
+          import json, sys
+          from datetime import date
+          versions = json.load(sys.stdin)
+          unreleased = [v for v in versions if not v.get('released', False)]
+          if not unreleased:
+              print('')
+              sys.exit(0)
+          unreleased.sort(key=lambda v: v.get('releaseDate', '9999-12-31'))
+          print(unreleased[0]['id'])
+          ")
+
+          RELEASE_NAME=$(echo "$VERSIONS" | python3 -c "
+          import json, sys
+          versions = json.load(sys.stdin)
+          unreleased = [v for v in versions if not v.get('released', False)]
+          if not unreleased:
+              print('')
+              sys.exit(0)
+          unreleased.sort(key=lambda v: v.get('releaseDate', '9999-12-31'))
+          print(unreleased[0]['name'])
+          ")
+
+          echo "id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
+          echo "name=$RELEASE_NAME" >> "$GITHUB_OUTPUT"
+          echo "Found release: $RELEASE_NAME ($RELEASE_ID)"
+
+      - name: Add ticket to Jira release
+        if: steps.jira-key.outputs.key != '' && steps.release.outputs.id != ''
+        run: |
+          KEY="${{ steps.jira-key.outputs.key }}"
+          VERSION_ID="${{ steps.release.outputs.id }}"
+          VERSION_NAME="${{ steps.release.outputs.name }}"
+
+          echo "Adding $KEY to release $VERSION_NAME"
+
+          curl -s -X PUT \
+            -u "${{ secrets.JIRA_AUTH }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"update\":{\"fixVersions\":[{\"add\":{\"id\":\"$VERSION_ID\"}}]}}" \
+            "https://arduron.atlassian.net/rest/api/3/issue/$KEY"
+
+          echo "Done — $KEY added to $VERSION_NAME"
+
+      - name: Comment on PR
+        if: steps.jira-key.outputs.key != '' && steps.release.outputs.name != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const key = '${{ steps.jira-key.outputs.key }}';
+            const release = '${{ steps.release.outputs.name }}';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: `📦 **${key}** added to Jira release **${release}**`
+            });

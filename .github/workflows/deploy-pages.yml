@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
   deployments: write
@@ -70,3 +70,63 @@ jobs:
           state: success
           deployment-id: ${{ steps.jira-deploy.outputs.deployment_id }}
           environment-url: https://fdilonev.github.io/test/
+
+      - name: Get latest tag
+        id: latest-tag
+        run: |
+          TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Bump version and create release
+        if: steps.latest-tag.outputs.tag != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const latestTag = '${{ steps.latest-tag.outputs.tag }}';
+            const parts = latestTag.replace('v','').split('.').map(Number);
+            parts[2] += 1;
+            const newTag = `v${parts.join('.')}`;
+
+            const { data: commits } = await github.rest.repos.compareCommits({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              base: latestTag,
+              head: 'main'
+            });
+
+            const lines = commits.commits.map(c => {
+              const msg = c.commit.message.split('\n')[0];
+              const jira = msg.match(/AR-\d+/g) || [];
+              const link = jira.map(k =>
+                `[${k}](https://arduron.atlassian.net/browse/${k})`
+              ).join(' ');
+              return `- ${msg} ${link}`;
+            });
+
+            const body = [
+              `## Cambios desde ${latestTag}`,
+              '',
+              ...lines,
+              '',
+              `**Jira keys:** ${{ steps.jira.outputs.keys }}`,
+              `**Deploy:** https://fdilonev.github.io/test/`
+            ].join('\n');
+
+            await github.rest.git.createRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: `refs/tags/${newTag}`,
+              sha: context.sha
+            });
+
+            await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: newTag,
+              name: `Release ${newTag}`,
+              body: body,
+              draft: false,
+              prerelease: false
+            });
+
+            console.log(`Created release ${newTag}`);
