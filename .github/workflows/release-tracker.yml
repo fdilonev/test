@@ -87,9 +87,25 @@ jobs:
               return;
             }
 
+            const key = process.env.JIRA_KEY;
+            const releaseUrl = `https://arduron.atlassian.net/projects/AR/versions/${target.id}`;
+            const ticketUrl = `https://arduron.atlassian.net/browse/${key}`;
+
+            const body = [
+              `## Release Tracking`,
+              `| | |`,
+              `|---|---|`,
+              `| **Ticket** | [${key}](${ticketUrl}) |`,
+              `| **Release** | [${target.name}](${releaseUrl}) |`,
+              `| **Status** | ${target.released ? 'Released' : 'Planned'} |`,
+              `| **Release Date** | ${target.releaseDate || 'TBD'} |`,
+              '',
+              `> ${key} has been added to **${target.name}**`
+            ].join('\n');
+
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.payload.pull_request.number,
-              body: `📦 **${process.env.JIRA_KEY}** added to Jira release **${target.name}**`
+              body
             });
